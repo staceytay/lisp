@@ -32,55 +32,81 @@ fn tokenize(buf: &str) -> Vec<Token> {
 }
 
 #[derive(Debug)]
-enum Exp {
+enum SExp {
     Nil,
     Int(usize),
-    Var(String),
-    List(Box<Exp>, Box<Exp>),
-    Plus(Box<Exp>, Box<Exp>),
-    First(Box<Exp>),
+    Id(String),
+    Cons(Box<SExp>, Box<SExp>),
 }
 
-fn parse_list(tokens: &mut Vec<Token>) -> Exp {
-    match tokens[0] {
-        Token::RParen => Exp::Nil,
-        _ => {
-            let head = parse(tokens);
-            let tail = parse_list(tokens);
-
-            match head {
-                Exp::Var(ref v) => match v.as_str() {
-                    "+" => match tail {
-                        Exp::List(b1, b2) => match *b2 {
-                            Exp::List(b3, b4) if matches!(*b4, Exp::Nil) => Exp::Plus(b1, b3),
-                            _ => panic!("parse_list: + wrong number of operands"),
-                        },
-                        _ => panic!("parse_list: + unexpected operands"),
-                    },
-                    "first" => Exp::First(Box::new(tail)),
-                    _ => Exp::List(Box::new(head), Box::new(tail)),
-                },
-                _ => Exp::List(Box::new(head), Box::new(tail)),
-            }
-        }
-    }
-}
-
-fn parse(tokens: &mut Vec<Token>) -> Exp {
+fn parse_sexp(tokens: &mut Vec<Token>) -> SExp {
+    // TODO: Either reverse vec or use VecDeque to avoid O(n^2)
     let t = tokens.remove(0);
 
     match t {
-        Token::Int(i) => Exp::Int(i),
-        Token::Id(id) => Exp::Var(id.clone()),
+        Token::Int(i) => SExp::Int(i),
+        Token::Id(id) => SExp::Id(id.clone()),
         Token::LParen => {
-            let exp = parse_list(tokens);
+            let exp = parse_sexp_list(tokens);
+            assert!(matches!(tokens[0], Token::RParen));
             tokens.remove(0); // Discard Token::RPAREN.
             exp
         }
         _ => panic!(
-            "parse: unexpected token, t = {:?}, tokens = {:?}",
+            "parse_sexp: unexpected token, t = {:?}, tokens = {:?}",
             t, tokens
         ),
+    }
+}
+
+fn parse_sexp_list(tokens: &mut Vec<Token>) -> SExp {
+    match tokens[0] {
+        Token::RParen => SExp::Nil,
+        _ => {
+            let head = parse_sexp(tokens);
+            let tail = parse_sexp_list(tokens);
+            SExp::Cons(Box::new(head), Box::new(tail))
+        }
+    }
+}
+
+#[derive(Debug)]
+enum Exp {
+    Int(usize),
+    Id(String),
+    List(Vec<Exp>),
+    Plus(Box<Exp>, Box<Exp>),
+    First(Box<Exp>),
+}
+
+fn parse_ast(sexp: SExp) -> Exp {
+    match sexp {
+        SExp::Int(i) => Exp::Int(i),
+        SExp::Id(id) => Exp::Id(id.clone()),
+        SExp::Cons(sexp1, sexp2) if matches!(*sexp2, SExp::Nil) => parse_ast(*sexp1),
+        SExp::Cons(sexp1, sexp2) => match *sexp1 {
+            SExp::Id(id) => match id.as_str() {
+                "+" => match *sexp2 {
+                    SExp::Cons(sexp3, sexp4) => {
+                        Exp::Plus(Box::new(parse_ast(*sexp3)), Box::new(parse_ast(*sexp4)))
+                    }
+                    _ => panic!("parse_ast: + missing operands"),
+                },
+                "first" => Exp::First(Box::new(parse_ast(*sexp2))),
+                "list" => {
+                    let mut items = Vec::new();
+                    let mut next_sexp = *sexp2;
+                    while let SExp::Cons(sexp3, sexp4) = next_sexp {
+                        items.push(parse_ast(*sexp3));
+                        next_sexp = *sexp4;
+                    }
+                    Exp::List(items)
+                }
+                _ => panic!("parse_ast: unsupported id: {:?}, {:?}", id, sexp2),
+            },
+            _ => panic!("parse_ast: {:?}, {:?}", sexp1, sexp2),
+        },
+        SExp::Nil => panic!("parse_ast: unexpected nil"),
     }
 }
 
@@ -93,7 +119,8 @@ fn main() {
             .expect("Failed to read line");
         let mut tokens = tokenize(&input);
         println!("main: tokens = {:?}", tokens);
-        let ast = parse(&mut tokens);
-        println!("main: ast = {:?}", ast);
+        let sexp = parse_sexp(&mut tokens);
+        let ast = parse_ast(sexp);
+        println!("main: ast = {:#?}", ast);
     }
 }
