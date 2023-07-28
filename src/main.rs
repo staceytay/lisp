@@ -21,6 +21,7 @@ fn tokenize(buf: &str) -> Vec<Token> {
                 if token.chars().all(char::is_numeric) {
                     Token::Int(token.parse::<usize>().unwrap())
                 } else {
+                    // TODO: Check if token is a valid identifier.
                     Token::Id(token.to_string())
                 }
             }
@@ -39,6 +40,7 @@ enum SExp {
     Cons(Box<SExp>, Box<SExp>),
 }
 
+// TODO: Return Result instead of panicking.
 fn parse_sexp(tokens: &mut Vec<Token>) -> SExp {
     // TODO: Either reverse vec or use VecDeque to avoid O(n^2)
     let t = tokens.remove(0);
@@ -79,6 +81,7 @@ enum Exp {
     First(Box<Exp>),
 }
 
+// TODO: Return Result instead of panicking.
 fn parse_ast(sexp: SExp) -> Exp {
     match sexp {
         SExp::Int(i) => Exp::Int(i),
@@ -110,10 +113,12 @@ fn parse_ast(sexp: SExp) -> Exp {
     }
 }
 
+// TODO: Add tests for each step of transformation.
 fn main() {
     // TODO: write out assert_eq! here to make testing easier.
     loop {
         let mut input = String::new();
+        // TODO: Add prompt when reading lines.
         io::stdin()
             .read_line(&mut input)
             .expect("Failed to read line");
